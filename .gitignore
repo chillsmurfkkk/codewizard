@@ -1,0 +1,28 @@
+# Build outputs
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# vcpkg / CMake local state
+vcpkg_installed/
+CMakeUserPresets.json
+
+# IDE/editor files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.VC.db
+
+# Local runtime data
+.index/
+config.json
+*.log
+
+# OS files
+Thumbs.db
+Desktop.ini
