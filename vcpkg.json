@@ -1,0 +1,16 @@
+{
+  "name": "codewizard",
+  "version-string": "0.1.0",
+  "builtin-baseline": "776a31fc8d3659de2c9cca4364062be5bbdf3857",
+  "dependencies": [
+    "cpr",
+    {
+      "name": "imgui",
+      "features": [
+        "glfw-binding",
+        "opengl3-binding"
+      ]
+    },
+    "nlohmann-json"
+  ]
+}
