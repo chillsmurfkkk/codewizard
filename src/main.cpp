@@ -6,6 +6,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include "core/file_scanner.hpp"
 #include "core/types.hpp"
 
 namespace {
@@ -71,7 +72,13 @@ int main()
         ImGui::InputText("##project_path", project_path, IM_ARRAYSIZE(project_path));
 
         if (ImGui::Button("Index Project")) {
-            status = "Indexing is not implemented yet. Next step: FileScanner + Chunker.";
+            try {
+                const codewizard::FileScanner scanner;
+                const auto files = scanner.scan(project_path);
+                status = "Found " + std::to_string(files.size()) + " C/C++ files. Next step: Chunker.";
+            } catch (const std::exception& exception) {
+                status = std::string{"Scan failed: "} + exception.what();
+            }
         }
 
         ImGui::SameLine();

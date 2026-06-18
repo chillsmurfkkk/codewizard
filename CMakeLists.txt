@@ -15,6 +15,7 @@ find_package(OpenGL REQUIRED)
 add_executable(codewizard
     src/core/app_config.cpp
     src/core/embeddings_client.cpp
+    src/core/file_scanner.cpp
     src/core/http_client.cpp
     src/core/llm_client.cpp
     src/main.cpp
