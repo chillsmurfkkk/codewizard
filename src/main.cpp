@@ -75,7 +75,7 @@ int main()
             try {
                 const codewizard::FileScanner scanner;
                 const auto files = scanner.scan(project_path);
-                status = "Found " + std::to_string(files.size()) + " C/C++ files. Next step: Chunker.";
+                status = "Found " + std::to_string(files.size()) + " project context files. Next step: Chunker.";
             } catch (const std::exception& exception) {
                 status = std::string{"Scan failed: "} + exception.what();
             }

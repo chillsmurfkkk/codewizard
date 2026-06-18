@@ -39,6 +39,10 @@ FileScanner::FileScanner(FileScannerOptions options)
     for (auto& extension : options_.supported_extensions) {
         extension = to_lower_ascii(extension);
     }
+
+    for (auto& filename : options_.supported_filenames) {
+        filename = to_lower_ascii(filename);
+    }
 }
 
 std::vector<SourceFile> FileScanner::scan(const std::filesystem::path& project_root) const
@@ -97,7 +101,12 @@ bool FileScanner::is_supported_file(const std::filesystem::directory_entry& entr
     }
 
     const auto extension = to_lower_ascii(entry.path().extension().string());
-    return std::ranges::find(options_.supported_extensions, extension) != options_.supported_extensions.end();
+    if (std::ranges::find(options_.supported_extensions, extension) != options_.supported_extensions.end()) {
+        return true;
+    }
+
+    const auto filename = to_lower_ascii(entry.path().filename().string());
+    return std::ranges::find(options_.supported_filenames, filename) != options_.supported_filenames.end();
 }
 
 bool FileScanner::should_skip_directory(const std::filesystem::path& path) const

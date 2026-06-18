@@ -13,12 +13,23 @@ struct FileScannerOptions {
     std::vector<std::string> supported_extensions = {
         ".c",
         ".cc",
+        ".cmake",
         ".cpp",
+        ".cppm",
         ".cxx",
         ".h",
         ".hh",
         ".hpp",
-        ".hxx"
+        ".hxx",
+        ".ixx",
+        ".md",
+        ".txt"
+    };
+
+    std::vector<std::string> supported_filenames = {
+        "CMakeLists.txt",
+        "Dockerfile",
+        "Makefile"
     };
 
     std::vector<std::string> ignored_directories = {
