@@ -6,6 +6,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include "core/chunker.hpp"
 #include "core/file_scanner.hpp"
 #include "core/types.hpp"
 
@@ -75,7 +76,11 @@ int main()
             try {
                 const codewizard::FileScanner scanner;
                 const auto files = scanner.scan(project_path);
-                status = "Found " + std::to_string(files.size()) + " project context files. Next step: Chunker.";
+                const codewizard::Chunker chunker;
+                const auto chunks = chunker.chunk_files(files);
+                status = "Found " + std::to_string(files.size()) +
+                    " files, created " + std::to_string(chunks.size()) +
+                    " chunks. Next step: VectorStore.";
             } catch (const std::exception& exception) {
                 status = std::string{"Scan failed: "} + exception.what();
             }
