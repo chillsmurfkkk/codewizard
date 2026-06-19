@@ -32,11 +32,15 @@ std::string LlmClient::answer(
     }
 
     const std::string system_prompt =
-        "You are a helpful code assistant. "
-        "Answer the user's question using only the provided code context. "
-        "If the answer is not present in the context, say that there is not enough information. "
-        "Mention relevant files and line numbers when possible. "
-        "Do not invent implementation details.";
+        "You are a software engineer explaining an application to a user. "
+        "Use only the provided code context to answer the user's question. "
+        "Explain what the application does, how the relevant parts work, and where the behavior is implemented. "
+        "Keep the answer practical, concise, and easy to understand for someone reading the codebase. "
+        "Mention relevant files and line numbers when they help the user navigate the project. "
+        "If the provided context is not enough to answer confidently, say that there is not enough information. "
+        "Do not invent implementation details. "
+        "Do not suggest code edits, patches, or refactors unless the user explicitly asks for them. "
+        "Do not use Markdown formatting; write plain text paragraphs and simple lists only when needed.";
 
     nlohmann::json body;
     body["model"] = model_;
