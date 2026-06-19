@@ -13,6 +13,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
 add_executable(codewizard
+    src/app/window_frame.cpp
     src/core/app_config.cpp
     src/core/chunker.cpp
     src/core/embeddings_client.cpp
@@ -41,8 +42,17 @@ target_link_libraries(codewizard
         OpenGL::GL
 )
 
+if(WIN32)
+    target_link_libraries(codewizard
+        PRIVATE
+            ole32
+            uuid
+    )
+endif()
+
 if(MSVC)
     target_compile_options(codewizard PRIVATE /W4 /permissive- /utf-8)
+    target_link_options(codewizard PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 else()
     target_compile_options(codewizard PRIVATE -Wall -Wextra -Wpedantic)
 endif()
