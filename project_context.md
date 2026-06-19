@@ -191,7 +191,7 @@ Answering steps:
 
 1. Load `<project>/.index/index.json`.
 2. Embed the question.
-3. Search top `k` chunks, default `top_k = 3`.
+3. Search top `k` chunks, default `top_k = 6`.
 4. Build prompt context from retrieved chunks.
 5. Call the LLM client.
 6. Return answer, sources, prompt context, and index path.
@@ -440,7 +440,7 @@ The original MVP scope was:
 - Split files into chunks.
 - Create embeddings through an API.
 - Save chunks and embeddings locally.
-- Find the top 3 relevant chunks with cosine similarity.
+- Find the top 6 relevant chunks with cosine similarity.
 - Generate an answer through an LLM API.
 - Show the answer and source references.
 - Show debug information for retrieved chunks.

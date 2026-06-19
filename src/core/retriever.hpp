@@ -11,7 +11,7 @@
 namespace codewizard {
 
 struct RetrievalOptions {
-    std::size_t top_k = 3;
+    std::size_t top_k = 6;
 };
 
 class Retriever {
