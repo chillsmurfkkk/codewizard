@@ -18,6 +18,7 @@ add_executable(codewizard
     src/core/embeddings_client.cpp
     src/core/file_scanner.cpp
     src/core/http_client.cpp
+    src/core/indexer.cpp
     src/core/llm_client.cpp
     src/core/vector_store.cpp
     src/main.cpp
