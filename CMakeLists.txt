@@ -21,6 +21,7 @@ add_executable(codewizard
     src/core/indexer.cpp
     src/core/llm_client.cpp
     src/core/prompt_builder.cpp
+    src/core/rag_pipeline.cpp
     src/core/retriever.cpp
     src/core/vector_store.cpp
     src/main.cpp
