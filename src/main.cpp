@@ -2,6 +2,9 @@
 #include <cstddef>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
+#include <future>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -202,6 +205,184 @@ void copy_to_input_buffer(const std::string& value, char* buffer, std::size_t bu
     buffer[buffer_size - 1] = '\0';
 }
 
+enum class GuiTaskKind {
+    None,
+    Indexing,
+    Asking
+};
+
+struct GuiTaskOutput {
+    std::string status;
+    std::string answer;
+    std::vector<codewizard::SearchResult> sources;
+    std::string prompt_context;
+};
+
+struct GuiTaskState {
+    std::mutex mutex;
+    GuiTaskOutput output;
+    std::future<GuiTaskOutput> future;
+    GuiTaskKind kind = GuiTaskKind::None;
+};
+
+bool is_task_running(const GuiTaskState& task)
+{
+    return task.kind != GuiTaskKind::None;
+}
+
+void set_task_status(GuiTaskState& task, std::string status)
+{
+    std::lock_guard lock{task.mutex};
+    task.output.status = std::move(status);
+}
+
+void begin_indexing_task(
+    GuiTaskState& task,
+    std::string project_path,
+    std::string& status,
+    std::string& answer,
+    std::vector<codewizard::SearchResult>& sources,
+    std::string& prompt_context
+)
+{
+    task.kind = GuiTaskKind::Indexing;
+    sources.clear();
+    prompt_context.clear();
+    status = "Starting indexing...";
+    answer = "Indexing project...";
+
+    {
+        std::lock_guard lock{task.mutex};
+        task.output = GuiTaskOutput{
+            status,
+            answer,
+            {},
+            {}
+        };
+    }
+
+    task.future = std::async(
+        std::launch::async,
+        [&task, project_path = std::move(project_path)]() -> GuiTaskOutput {
+            try {
+                const auto config = codewizard::load_app_config();
+                const codewizard::RAGPipeline pipeline{config};
+                const auto result = pipeline.index_project(
+                    project_path,
+                    [&task](const codewizard::IndexingProgress& progress) {
+                        set_task_status(task, progress.message);
+                    }
+                );
+
+                return GuiTaskOutput{
+                    "Indexed " + std::to_string(result.chunk_count) +
+                        " chunks from " + std::to_string(result.file_count) +
+                        " files. Saved " + result.index_path.string(),
+                    "Project index is ready. Ask a question about the codebase.",
+                    {},
+                    {}
+                };
+            } catch (const std::exception& exception) {
+                return GuiTaskOutput{
+                    std::string{"Indexing failed: "} + exception.what(),
+                    "Indexing failed. Check the status message.",
+                    {},
+                    {}
+                };
+            }
+        }
+    );
+}
+
+void begin_asking_task(
+    GuiTaskState& task,
+    std::string project_path,
+    std::string question,
+    std::string& status,
+    std::string& answer,
+    std::vector<codewizard::SearchResult>& sources,
+    std::string& prompt_context
+)
+{
+    task.kind = GuiTaskKind::Asking;
+    sources.clear();
+    prompt_context.clear();
+    status = "Starting answer generation...";
+    answer = "Thinking...";
+
+    {
+        std::lock_guard lock{task.mutex};
+        task.output = GuiTaskOutput{
+            status,
+            answer,
+            {},
+            {}
+        };
+    }
+
+    task.future = std::async(
+        std::launch::async,
+        [&task, project_path = std::move(project_path), question = std::move(question)]() -> GuiTaskOutput {
+            try {
+                const auto config = codewizard::load_app_config();
+                const codewizard::RAGPipeline pipeline{config};
+                auto result = pipeline.answer_question(
+                    project_path,
+                    question,
+                    [&task](const codewizard::AnsweringProgress& progress) {
+                        set_task_status(task, progress.message);
+                    }
+                );
+
+                const auto source_count = result.sources.size();
+                return GuiTaskOutput{
+                    "Answered with " + std::to_string(source_count) + " retrieved chunks.",
+                    std::move(result.answer),
+                    std::move(result.sources),
+                    std::move(result.context)
+                };
+            } catch (const std::exception& exception) {
+                return GuiTaskOutput{
+                    std::string{"Answer failed: "} + exception.what(),
+                    "Answer generation failed. Check the status message.",
+                    {},
+                    {}
+                };
+            }
+        }
+    );
+}
+
+void sync_task_state(
+    GuiTaskState& task,
+    std::string& status,
+    std::string& answer,
+    std::vector<codewizard::SearchResult>& sources,
+    std::string& prompt_context
+)
+{
+    if (!is_task_running(task)) {
+        return;
+    }
+
+    {
+        std::lock_guard lock{task.mutex};
+        if (!task.output.status.empty()) {
+            status = task.output.status;
+        }
+    }
+
+    if (task.future.valid() &&
+        task.future.wait_for(std::chrono::seconds{0}) == std::future_status::ready) {
+        auto output = task.future.get();
+        status = std::move(output.status);
+        answer = std::move(output.answer);
+        sources = std::move(output.sources);
+        prompt_context = std::move(output.prompt_context);
+        task.kind = GuiTaskKind::None;
+    }
+}
+
 } // namespace
 
 int main()
@@ -254,6 +435,7 @@ int main()
     std::string answer = "Index a project, then ask a question about that codebase.";
     std::vector<codewizard::SearchResult> sources;
     std::string prompt_context;
+    GuiTaskState task_state;
 
     {
         codewizard::app::WindowFrame window_frame{window};
@@ -265,6 +447,9 @@ int main()
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
+            sync_task_state(task_state, status, answer, sources, prompt_context);
+
+            const bool task_running = is_task_running(task_state);
 
             ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F), ImGuiCond_Always);
             ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
@@ -287,36 +472,26 @@ int main()
             ImGui::SetNextItemWidth(-118.0F);
             ImGui::InputText("##project_path", project_path, IM_ARRAYSIZE(project_path));
             ImGui::SameLine();
+            ImGui::BeginDisabled(task_running);
             if (ImGui::Button("Browse", ImVec2(100.0F, 0.0F))) {
                 if (const auto selected_path = choose_folder(window)) {
                     copy_to_input_buffer(*selected_path, project_path, IM_ARRAYSIZE(project_path));
                 }
             }
+            ImGui::EndDisabled();
 
+            ImGui::BeginDisabled(task_running);
             if (ImGui::Button("Index Project")) {
-                try {
-                    answer = "Indexing project...";
-                    sources.clear();
-                    prompt_context.clear();
-
-                    const auto config = codewizard::load_app_config();
-                    const codewizard::RAGPipeline pipeline{config};
-                    const auto result = pipeline.index_project(
-                        project_path,
-                        [&status](const codewizard::IndexingProgress& progress) {
-                            status = progress.message;
-                        }
-                    );
-
-                    status = "Indexed " + std::to_string(result.chunk_count) +
-                        " chunks from " + std::to_string(result.file_count) +
-                        " files. Saved " + result.index_path.string();
-                    answer = "Project index is ready. Ask a question about the codebase.";
-                } catch (const std::exception& exception) {
-                    status = std::string{"Indexing failed: "} + exception.what();
-                    answer = "Indexing failed. Check the status message.";
-                }
+                begin_indexing_task(
+                    task_state,
+                    project_path,
+                    status,
+                    answer,
+                    sources,
+                    prompt_context
+                );
             }
+            ImGui::EndDisabled();
 
             ImGui::SameLine();
             ImGui::TextWrapped("Status: %s", status.c_str());
@@ -326,26 +501,19 @@ int main()
             ImGui::SetNextItemWidth(-1.0F);
             ImGui::InputText("##question", question, IM_ARRAYSIZE(question));
 
+            ImGui::BeginDisabled(task_running);
             if (ImGui::Button("Ask")) {
-                try {
-                    answer = "Thinking...";
-                    sources.clear();
-                    prompt_context.clear();
-                    status = "Retrieving relevant chunks...";
-
-                    const auto config = codewizard::load_app_config();
-                    const codewizard::RAGPipeline pipeline{config};
-                    auto result = pipeline.answer_question(project_path, question);
-
-                    answer = std::move(result.answer);
-                    sources = std::move(result.sources);
-                    prompt_context = std::move(result.context);
-                    status = "Answered with " + std::to_string(sources.size()) + " retrieved chunks.";
-                } catch (const std::exception& exception) {
-                    status = std::string{"Answer failed: "} + exception.what();
-                    answer = "Answer generation failed. Check the status message.";
-                }
+                begin_asking_task(
+                    task_state,
+                    project_path,
+                    question,
+                    status,
+                    answer,
+                    sources,
+                    prompt_context
+                );
             }
+            ImGui::EndDisabled();
 
             ImGui::Separator();
             ImGui::TextUnformatted("Answer");

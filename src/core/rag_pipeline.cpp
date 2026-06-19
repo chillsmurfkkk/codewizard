@@ -48,9 +48,14 @@ IndexingResult RAGPipeline::index_project(
 
 RAGAnswer RAGPipeline::answer_question(
     const std::filesystem::path& project_root,
-    const std::string& question
+    const std::string& question,
+    const AnsweringProgressCallback& on_progress
 ) const
 {
+    if (on_progress) {
+        on_progress(AnsweringProgress{"Loading project index..."});
+    }
+
     const auto root = canonical_project_root(project_root);
     const auto index_path = default_index_path(root);
     auto retriever = load_retriever_from_project(
@@ -59,13 +64,31 @@ RAGAnswer RAGPipeline::answer_question(
         options_.retrieval
     );
 
+    if (on_progress) {
+        on_progress(AnsweringProgress{"Embedding question and retrieving chunks..."});
+    }
+
     auto sources = retriever.retrieve(question);
+
+    if (on_progress) {
+        on_progress(AnsweringProgress{
+            "Building prompt from " + std::to_string(sources.size()) + " retrieved chunks..."
+        });
+    }
 
     const PromptBuilder prompt_builder{options_.prompt_builder};
     auto context = prompt_builder.build_context(sources);
 
+    if (on_progress) {
+        on_progress(AnsweringProgress{"Calling language model..."});
+    }
+
     auto llm_client = create_llm_client();
     auto answer = llm_client.answer(question, context);
+
+    if (on_progress) {
+        on_progress(AnsweringProgress{"Answer ready."});
+    }
 
     return RAGAnswer{
         std::move(answer),

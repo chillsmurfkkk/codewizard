@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,12 @@ struct RAGAnswer {
     std::filesystem::path index_path;
 };
 
+struct AnsweringProgress {
+    std::string message;
+};
+
+using AnsweringProgressCallback = std::function<void(const AnsweringProgress&)>;
+
 class RAGPipeline {
 public:
     explicit RAGPipeline(
@@ -40,7 +47,8 @@ public:
 
     [[nodiscard]] RAGAnswer answer_question(
         const std::filesystem::path& project_root,
-        const std::string& question
+        const std::string& question,
+        const AnsweringProgressCallback& on_progress = {}
     ) const;
 
 private:
