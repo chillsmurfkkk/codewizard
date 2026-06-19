@@ -20,6 +20,7 @@ add_executable(codewizard
     src/core/http_client.cpp
     src/core/indexer.cpp
     src/core/llm_client.cpp
+    src/core/retriever.cpp
     src/core/vector_store.cpp
     src/main.cpp
 )
