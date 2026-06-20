@@ -4,9 +4,9 @@
 
 It scans a project folder, creates a local index, and uses an LLM to answer questions with source references.
 
-## What you need
+## Prerequisites
 
-- Windows.
+- Windows operating system.
 - Visual Studio 2022 or Build Tools with the C++ desktop workload.
 - CMake 3.24+.
 - vcpkg.
