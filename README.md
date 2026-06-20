@@ -1,46 +1,26 @@
 # codewizard
 
-`codewizard` is a local educational RAG application for searching and explaining source code. The first milestone is a C++20 Dear ImGui shell built with CMake and vcpkg.
+`codewizard` is a local desktop RAG app for asking questions about source code.
 
-## Prerequisites
+It scans a project folder, creates a local index, and uses an LLM to answer questions with source references.
 
+## What you need
+
+- Windows.
 - Visual Studio 2022 or Build Tools with the C++ desktop workload.
 - CMake 3.24+.
-- Official vcpkg checkout at `C:\Users\user\tools\vcpkg`.
+- vcpkg.
+- API key for an OpenAI-compatible provider.
 
-## Build
+## Setup
 
-```powershell
-cmake --preset windows-msvc
-cmake --build --preset windows-msvc-debug
-```
-
-Run the app:
-
-```powershell
-.\build\windows-msvc\Debug\codewizard.exe
-```
-
-## Dependencies
-
-Dependencies are managed with vcpkg manifest mode in `vcpkg.json`:
-
-- Dear ImGui with GLFW and OpenGL3 backends
-- cpr
-- nlohmann/json
-
-Runtime-local files such as `.index/index.json` and `config.json` are intentionally ignored by git.
-
-## API config
-
-The API clients are OpenAI-compatible and read settings from a local ignored `config.json`.
-Use `config.example.json` as a template:
+Copy the example config:
 
 ```powershell
 Copy-Item .\config.example.json .\config.json
 ```
 
-Then edit `config.json`:
+Edit `config.json`:
 
 ```json
 {
@@ -50,3 +30,47 @@ Then edit `config.json`:
   "llm_model": "google/gemini-3.1-flash-lite"
 }
 ```
+
+## Build
+
+Set `VCPKG_ROOT` to your local vcpkg folder:
+
+```powershell
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+```
+
+Then configure and build with the Windows preset:
+
+```powershell
+cmake --preset windows-msvc
+cmake --build --preset windows-msvc-release
+```
+
+The preset uses Visual Studio 2022 on Windows. The vcpkg path is taken from `VCPKG_ROOT`, so it does not need to be the same on every machine.
+
+## Run
+
+```powershell
+.\build\windows-msvc\Release\codewizard.exe
+```
+
+For development builds, use `windows-msvc-debug` and run the executable from `build\windows-msvc\Debug`.
+
+## How to use
+
+1. Select a project folder.
+2. Click `Index Project`.
+3. Ask a question about the code.
+4. Read the answer and check the source references.
+
+The index is saved inside the selected project:
+
+```text
+<project>/.index/index.json
+```
+
+## Notes
+
+- `config.json` is local and ignored by git.
+- `.index/index.json` is local and ignored by git.
+- Architecture details are documented separately in `docs/architecture.md`.

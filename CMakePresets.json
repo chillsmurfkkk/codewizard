@@ -9,12 +9,12 @@
     {
       "name": "windows-msvc",
       "displayName": "Windows MSVC x64",
-      "description": "Configure with Visual Studio 2022 and the local official vcpkg checkout.",
+      "description": "Configure with Visual Studio 2022 and vcpkg manifest mode.",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/windows-msvc",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "C:/Users/user/tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows"
       }
     }
