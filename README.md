@@ -20,7 +20,7 @@ Copy the example config:
 Copy-Item .\config.example.json .\config.json
 ```
 
-Edit `config.json`:
+Edit `config.json` and place it near executable file:
 
 ```json
 {
