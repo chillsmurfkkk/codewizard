@@ -8,7 +8,7 @@ on:
 jobs:
   windows-tests:
     name: Windows CMake tests
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
