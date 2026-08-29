@@ -101,6 +101,10 @@ std::string PromptBuilder::format_result(
         << "[" << display_index << "] File: " << chunk.source.file
         << ", lines " << chunk.source.start_line << "-" << chunk.source.end_line;
 
+    if (!chunk.metadata.qualified_name.empty()) {
+        output << ", symbol=" << chunk.metadata.qualified_name;
+    }
+
     if (options_.include_similarity_scores) {
         output << ", score=" << std::fixed << std::setprecision(3) << result.score;
     }

@@ -2,12 +2,18 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <regex>
 #include <string>
 #include <vector>
 
 #include "core/types.hpp"
 
 namespace codewizard {
+
+struct IgnoreRule {
+    std::regex expression;
+    bool negated = false;
+};
 
 struct FileScannerOptions {
     std::vector<std::string> supported_extensions = {
@@ -57,8 +63,17 @@ public:
 private:
     [[nodiscard]] bool is_supported_file(const std::filesystem::directory_entry& entry) const;
     [[nodiscard]] bool should_skip_directory(const std::filesystem::path& path) const;
+    [[nodiscard]] bool is_ignored(
+        const std::filesystem::path& path,
+        const std::vector<IgnoreRule>& rules
+    ) const;
+    [[nodiscard]] bool may_contain_unignored_files(
+        const std::filesystem::path& path,
+        const std::vector<IgnoreRule>& rules
+    ) const;
 
     FileScannerOptions options_;
+    mutable std::filesystem::path project_root_;
 };
 
 } // namespace codewizard

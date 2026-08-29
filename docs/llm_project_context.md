@@ -137,7 +137,7 @@ src/
 
   core/
     app_config.hpp/.cpp         Runtime config and endpoint URL construction
-    chunker.hpp/.cpp            Line-based overlapping chunking
+    chunker.hpp/.cpp            Tree-sitter syntax-aware chunking with line fallback
     embeddings_client.hpp/.cpp  OpenAI-compatible embeddings API client
     file_scanner.hpp/.cpp       Recursive source file scanning
     http_client.hpp/.cpp        Shared JSON POST wrapper using cpr
@@ -256,7 +256,9 @@ src/core/chunker.hpp
 src/core/chunker.cpp
 ```
 
-Current defaults:
+The chunker uses Tree-sitter for C/C++ files and keeps line-based overlapping chunks as a fallback for Markdown, CMake, unsupported files, and parse failures.
+
+Current fallback defaults:
 
 - `max_lines_per_chunk = 100`
 - `overlap_lines = 20`
@@ -269,6 +271,8 @@ Chunk 2: lines 81-180
 Chunk 3: lines 161-260
 ```
 
+Syntax-aware chunks are built around declarations, namespaces, classes, structs, enums, and function definitions. A normal function or method remains one chunk, even when it is short; a large syntax node is split at statement boundaries up to `max_bytes_per_syntax_chunk` (default 12,000 bytes). Tiny headers and non-symbol fragments are merged into neighboring chunks when possible, and retrieval filters remaining short non-symbol fragments so they cannot displace useful code from top-k results.
+
 Each chunk stores:
 
 - chunk id
@@ -276,6 +280,15 @@ Each chunk stores:
 - start line
 - end line
 - chunk text
+- language, chunk kind, and chunking mode
+- optional qualified symbol name, such as `Indexer::index_project`
+- part metadata when a large syntax unit is split
+
+Tree-sitter is an error-tolerant syntax parser, not a semantic C++ compiler AST. It does not resolve types or build a translation unit from compiler flags, but it provides stable structural boundaries without requiring `compile_commands.json`.
+
+The index records `schema_version` and `chunker_version`. Changing chunking rules changes chunk boundaries and embeddings, so an index should be rebuilt after changing the chunker version.
+
+After changing chunking or retrieval policy, click `Index Project` again. Existing indexes retain their old chunk boundaries and embeddings until they are rebuilt.
 
 ## Vector Store
 

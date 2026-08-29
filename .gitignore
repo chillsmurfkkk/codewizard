@@ -8,6 +8,7 @@ compile_commands.json
 
 # vcpkg / CMake local state
 vcpkg_installed/
+vcpkg/
 CMakeUserPresets.json
 
 # IDE/editor files
@@ -22,6 +23,7 @@ CMakeUserPresets.json
 .index/
 config.json
 *.log
+*.pptx
 
 # OS files
 Thumbs.db

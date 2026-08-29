@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <regex>
 #include <stdexcept>
 #include <system_error>
 
@@ -31,6 +33,91 @@ std::string generic_relative_path(
     return relative.generic_string();
 }
 
+std::string glob_to_regex(std::string pattern, bool match_any_level)
+{
+    std::string expression = "^";
+    if (match_any_level) {
+        expression += "(?:.*/)?";
+    }
+
+    for (std::size_t index = 0; index < pattern.size(); ++index) {
+        const char character = pattern[index];
+        if (character == '*') {
+            if (index + 1 < pattern.size() && pattern[index + 1] == '*') {
+                ++index;
+                expression += ".*";
+            } else {
+                expression += "[^/]*";
+            }
+        } else if (character == '?') {
+            expression += "[^/]";
+        } else if (character == '/') {
+            expression += '/';
+        } else {
+            expression += '[';
+            if (character == '\\' || character == ']' || character == '^' || character == '-') {
+                expression += '\\';
+            }
+            expression += character;
+            expression += ']';
+        }
+    }
+
+    expression += "(?:/.*)?$";
+    return expression;
+}
+
+std::vector<IgnoreRule> load_ignore_rules(const std::filesystem::path& root)
+{
+    std::ifstream input(root / ".gitignore");
+    if (!input) {
+        return {};
+    }
+
+    std::vector<IgnoreRule> rules;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+
+        bool negated = false;
+        if (line.front() == '!') {
+            negated = true;
+            line.erase(0, 1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        bool directory_only = line.back() == '/';
+        if (directory_only) {
+            line.pop_back();
+        }
+        while (!line.empty() && line.front() == '/') {
+            line.erase(0, 1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        const bool anchored = line.find('/') != std::string::npos;
+        try {
+            rules.push_back(IgnoreRule{
+                std::regex(glob_to_regex(line, !anchored), std::regex::ECMAScript),
+                negated
+            });
+        } catch (const std::regex_error&) {
+            // An invalid ignore pattern should not make the whole project unscannable.
+        }
+    }
+
+    return rules;
+}
+
 } // namespace
 
 FileScanner::FileScanner(FileScannerOptions options)
@@ -53,6 +140,9 @@ std::vector<SourceFile> FileScanner::scan(const std::filesystem::path& project_r
         throw std::runtime_error("Project path is not a readable directory: " + project_root.string());
     }
 
+    project_root_ = root;
+    const auto ignore_rules = load_ignore_rules(root);
+
     std::vector<SourceFile> files;
 
     std::filesystem::recursive_directory_iterator iterator(
@@ -68,8 +158,11 @@ std::vector<SourceFile> FileScanner::scan(const std::filesystem::path& project_r
         if (entry.is_directory(error)) {
             if (!error && should_skip_directory(entry.path())) {
                 iterator.disable_recursion_pending();
+            } else if (!error && is_ignored(entry.path(), ignore_rules) &&
+                !may_contain_unignored_files(entry.path(), ignore_rules)) {
+                iterator.disable_recursion_pending();
             }
-        } else if (!error && is_supported_file(entry)) {
+        } else if (!error && !is_ignored(entry.path(), ignore_rules) && is_supported_file(entry)) {
             files.push_back(SourceFile{
                 entry.path(),
                 generic_relative_path(entry.path(), root),
@@ -120,6 +213,47 @@ bool FileScanner::should_skip_directory(const std::filesystem::path& path) const
     return std::ranges::any_of(options_.ignored_directories, [&](const std::string& ignored) {
         return directory_name == to_lower_ascii(ignored);
     });
+}
+
+bool FileScanner::is_ignored(
+    const std::filesystem::path& path,
+    const std::vector<IgnoreRule>& rules
+) const
+{
+    const auto relative = generic_relative_path(path, project_root_);
+    bool ignored = false;
+    for (const auto& rule : rules) {
+        if (std::regex_match(relative, rule.expression)) {
+            ignored = !rule.negated;
+        }
+    }
+    return ignored;
+}
+
+bool FileScanner::may_contain_unignored_files(
+    const std::filesystem::path& path,
+    const std::vector<IgnoreRule>& rules
+) const
+{
+    std::error_code error;
+    for (std::filesystem::recursive_directory_iterator iterator(
+        path, std::filesystem::directory_options::skip_permission_denied, error);
+        iterator != std::filesystem::recursive_directory_iterator{};
+        iterator.increment(error)) {
+        if (error) {
+            error.clear();
+            continue;
+        }
+        const auto& entry = *iterator;
+        if (entry.is_directory(error)) {
+            if (should_skip_directory(entry.path()) || is_ignored(entry.path(), rules)) {
+                iterator.disable_recursion_pending();
+            }
+        } else if (!is_ignored(entry.path(), rules)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace codewizard

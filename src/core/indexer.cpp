@@ -150,7 +150,9 @@ IndexingResult Indexer::index_project(
         root.generic_string(),
         embedding_model_,
         files.size(),
-        embedded_chunks.size()
+        embedded_chunks.size(),
+        2,
+        "tree-sitter-cpp-v1"
     });
     store.set_chunks(std::move(embedded_chunks));
 

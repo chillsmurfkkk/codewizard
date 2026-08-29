@@ -179,6 +179,26 @@ void test_file_scanner_filters_supported_files()
     require_equal(files.size(), expected.size(), "FileScanner result count");
 }
 
+void test_file_scanner_honors_project_gitignore()
+{
+    TempDir temp;
+    write_file(temp.path() / ".gitignore",
+        "ignored-dir/\n"
+        "*.generated.cpp\n"
+        "!ignored-dir/keep.cpp\n"
+        "src/private/*.cpp\n");
+    write_file(temp.path() / "src" / "main.cpp", "int main() {}\n");
+    write_file(temp.path() / "src" / "private" / "secret.cpp", "skip\n");
+    write_file(temp.path() / "generated.generated.cpp", "skip\n");
+    write_file(temp.path() / "ignored-dir" / "drop.cpp", "skip\n");
+    write_file(temp.path() / "ignored-dir" / "keep.cpp", "keep\n");
+
+    const auto files = FileScanner{}.scan(temp.path());
+    const auto paths = relative_paths(files);
+    const std::set<std::string> expected{"ignored-dir/keep.cpp", "src/main.cpp"};
+    require(paths == expected, "FileScanner should honor the project's .gitignore rules");
+}
+
 void test_chunker_uses_expected_overlap()
 {
     TempDir temp;
@@ -207,6 +227,148 @@ void test_chunker_uses_expected_overlap()
     require_equal(chunks[2].source.end_line, 250, "Third chunk end");
     require(chunks[2].text.starts_with("line 161\nline 162"), "Third chunk should preserve the overlap");
     require(chunks[2].text.ends_with("line 250"), "Third chunk should include the final line");
+}
+
+void test_chunker_preserves_cpp_syntax_units()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "src" / "sample.cpp";
+    write_file(file_path,
+        "namespace demo {\n"
+        "class Box {\n"
+        "public:\n"
+        "    int get() const { return value_; }\n"
+        "private:\n"
+        "    int value_ = 42;\n"
+        "};\n"
+        "}\n"
+        "int free_function(int value) { return value + 1; }\n");
+
+    const SourceFile file{file_path, "src/sample.cpp", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{{100, 20, 600, 12000, true}}.chunk_file(file, 0);
+
+    require(!chunks.empty(), "Syntax chunker should produce chunks");
+    require(
+        std::any_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return chunk.metadata.mode == codewizard::ChunkMode::syntax &&
+                chunk.metadata.kind == codewizard::ChunkKind::function &&
+                chunk.metadata.qualified_name.find("demo::Box::get") != std::string::npos;
+        }),
+        "Syntax chunker should identify a qualified class method"
+    );
+    require(
+        std::any_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return chunk.metadata.kind == codewizard::ChunkKind::function &&
+                chunk.metadata.qualified_name.find("free_function") != std::string::npos;
+        }),
+        "Syntax chunker should identify a free function"
+    );
+    require(
+        std::all_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return chunk.metadata.language == "cpp" && chunk.metadata.mode == codewizard::ChunkMode::syntax;
+        }),
+        "Valid C++ syntax chunks should carry syntax metadata"
+    );
+    require(
+        std::none_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return chunk.metadata.kind == codewizard::ChunkKind::type_declaration &&
+                chunk.metadata.qualified_name.find("demo::Box") != std::string::npos &&
+                (chunk.text.find('{') == std::string::npos || chunk.text.find('}') == std::string::npos);
+        }),
+        "Container wrappers should not become standalone chunks"
+    );
+}
+
+void test_chunker_merges_tiny_split_symbol_tail()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "large.cpp";
+    const std::string contents =
+        "int calculate() {\n"
+        "    int value = 0;\n"
+        "    value += 1111111111;\n"
+        "    value += 2222222222;\n"
+        "    value += 3333333333;\n"
+        "    return value;\n"
+        "}";
+    write_file(file_path, contents);
+
+    const SourceFile file{file_path, "large.cpp", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{{100, 20, 30, contents.size() - 1, true}}.chunk_file(file, 0);
+
+    for (const auto& chunk : chunks) {
+        if (!chunk.metadata.complete_symbol && chunk.text.size() < 30) {
+            std::ostringstream message;
+            message << "Tiny split-symbol chunk has " << chunk.text.size()
+                << " bytes: \"" << chunk.text << '"';
+            throw TestFailure(message.str());
+        }
+        require(chunk.text.size() <= contents.size() - 1, "Split chunks should respect the maximum size");
+    }
+}
+
+void test_chunker_enforces_maximum_without_syntax_breakpoints()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "literal.cpp";
+    const std::string contents = "const char* text = \"" + std::string(200, 'x') + "\";\n";
+    write_file(file_path, contents);
+
+    const SourceFile file{file_path, "literal.cpp", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{{100, 20, 30, 80, true}}.chunk_file(file, 0);
+
+    require(chunks.size() >= 3, "A node without internal syntax boundaries should be split");
+    require(
+        std::all_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return !chunk.text.empty() && chunk.text.size() <= 80;
+        }),
+        "Every syntax chunk should respect the maximum size"
+    );
+}
+
+void test_chunker_enforces_maximum_for_syntax_gaps()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "gap.cpp";
+    const std::string contents = "namespace demo {" + std::string(200, ' ') + "int value;\n}\n";
+    write_file(file_path, contents);
+
+    const SourceFile file{file_path, "gap.cpp", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{{100, 20, 30, 80, true}}.chunk_file(file, 0);
+
+    require(
+        std::all_of(chunks.begin(), chunks.end(), [](const CodeChunk& chunk) {
+            return !chunk.text.empty() && chunk.text.size() <= 80;
+        }),
+        "Syntax gaps should respect the maximum chunk size"
+    );
+}
+
+void test_chunker_falls_back_for_non_cpp_files()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "notes.md";
+    write_file(file_path, numbered_lines(130));
+
+    const SourceFile file{file_path, "notes.md", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{{100, 20, 600, 12000, true}}.chunk_file(file, 0);
+
+    require_equal(chunks.size(), 2, "Fallback chunk count");
+    require(chunks[0].metadata.mode == codewizard::ChunkMode::fallback, "Fallback mode should be recorded");
+    require(chunks[0].metadata.kind == codewizard::ChunkKind::fallback, "Fallback kind should be recorded");
+    require_equal(chunks[1].source.start_line, 81, "Fallback overlap start");
+}
+
+void test_chunker_skips_whitespace_only_chunks()
+{
+    TempDir temp;
+    const auto file_path = temp.path() / "whitespace.cpp";
+    write_file(file_path, "   \n\n\t\n");
+
+    const SourceFile file{file_path, "whitespace.cpp", fs::file_size(file_path)};
+    const auto chunks = codewizard::Chunker{}.chunk_file(file, 0);
+
+    require(chunks.empty(), "Whitespace-only files should not create embedding chunks");
 }
 
 void test_vector_store_saves_and_loads_index()
@@ -280,7 +442,14 @@ int main()
 {
     const std::vector<std::pair<std::string, std::function<void()>>> tests{
         {"FileScanner filters supported files", test_file_scanner_filters_supported_files},
+        {"FileScanner honors project gitignore", test_file_scanner_honors_project_gitignore},
         {"Chunker uses expected overlap", test_chunker_uses_expected_overlap},
+        {"Chunker preserves C++ syntax units", test_chunker_preserves_cpp_syntax_units},
+        {"Chunker merges tiny split symbol tail", test_chunker_merges_tiny_split_symbol_tail},
+        {"Chunker enforces maximum without syntax breakpoints", test_chunker_enforces_maximum_without_syntax_breakpoints},
+        {"Chunker enforces maximum for syntax gaps", test_chunker_enforces_maximum_for_syntax_gaps},
+        {"Chunker falls back for non-C++ files", test_chunker_falls_back_for_non_cpp_files},
+        {"Chunker skips whitespace-only chunks", test_chunker_skips_whitespace_only_chunks},
         {"VectorStore saves and loads index", test_vector_store_saves_and_loads_index},
         {"VectorStore cosine similarity and top-k", test_vector_store_cosine_similarity_and_top_k}
     };

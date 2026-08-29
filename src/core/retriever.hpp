@@ -12,6 +12,9 @@ namespace codewizard {
 
 struct RetrievalOptions {
     std::size_t top_k = 6;
+    std::size_t candidate_pool_size = 24;
+    std::size_t min_chunk_characters = 200;
+    std::size_t max_results_per_symbol = 2;
 };
 
 class Retriever {

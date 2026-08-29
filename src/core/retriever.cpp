@@ -1,6 +1,7 @@
 #include "core/retriever.hpp"
 
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace codewizard {
@@ -25,6 +26,9 @@ Retriever::Retriever(
     if (options_.top_k == 0) {
         throw std::runtime_error("Retriever top_k must be greater than zero");
     }
+    if (options_.candidate_pool_size < options_.top_k) {
+        options_.candidate_pool_size = options_.top_k;
+    }
 }
 
 std::vector<SearchResult> Retriever::retrieve(const std::string& question) const
@@ -42,7 +46,32 @@ std::vector<SearchResult> Retriever::retrieve(const std::string& question) const
         throw std::runtime_error("Question embedding is empty");
     }
 
-    auto results = vector_store_.search(question_embedding, options_.top_k);
+    const auto candidates = vector_store_.search(question_embedding, options_.candidate_pool_size);
+    std::vector<SearchResult> results;
+    results.reserve(options_.top_k);
+    std::unordered_map<std::string, std::size_t> symbol_counts;
+
+    for (const auto& candidate : candidates) {
+        const bool is_atomic_symbol = candidate.chunk.metadata.kind == ChunkKind::function ||
+            candidate.chunk.metadata.kind == ChunkKind::type_declaration;
+        if (candidate.chunk.text.size() < options_.min_chunk_characters && !is_atomic_symbol) {
+            continue;
+        }
+
+        const auto& symbol = candidate.chunk.metadata.qualified_name;
+        if (!symbol.empty() && symbol_counts[symbol] >= options_.max_results_per_symbol) {
+            continue;
+        }
+
+        results.push_back(candidate);
+        if (!symbol.empty()) {
+            ++symbol_counts[symbol];
+        }
+        if (results.size() == options_.top_k) {
+            break;
+        }
+    }
+
     if (results.empty()) {
         throw std::runtime_error("No matching chunks found in the vector store");
     }

@@ -14,6 +14,39 @@ namespace {
 constexpr const char* index_directory_name = ".index";
 constexpr const char* index_file_name = "index.json";
 
+const char* chunk_kind_to_string(ChunkKind kind)
+{
+    switch (kind) {
+    case ChunkKind::file_header: return "file_header";
+    case ChunkKind::namespace_scope: return "namespace_scope";
+    case ChunkKind::type_declaration: return "type_declaration";
+    case ChunkKind::function: return "function";
+    case ChunkKind::declaration: return "declaration";
+    case ChunkKind::fallback: return "fallback";
+    }
+    return "fallback";
+}
+
+ChunkKind chunk_kind_from_string(const std::string& value)
+{
+    if (value == "file_header") return ChunkKind::file_header;
+    if (value == "namespace_scope") return ChunkKind::namespace_scope;
+    if (value == "type_declaration") return ChunkKind::type_declaration;
+    if (value == "function") return ChunkKind::function;
+    if (value == "declaration") return ChunkKind::declaration;
+    return ChunkKind::fallback;
+}
+
+const char* chunk_mode_to_string(ChunkMode mode)
+{
+    return mode == ChunkMode::syntax ? "syntax" : "fallback";
+}
+
+ChunkMode chunk_mode_from_string(const std::string& value)
+{
+    return value == "syntax" ? ChunkMode::syntax : ChunkMode::fallback;
+}
+
 nlohmann::json chunk_to_json(const EmbeddedChunk& chunk)
 {
     return nlohmann::json{
@@ -22,14 +55,20 @@ nlohmann::json chunk_to_json(const EmbeddedChunk& chunk)
         {"start_line", chunk.chunk.source.start_line},
         {"end_line", chunk.chunk.source.end_line},
         {"text", chunk.chunk.text},
+        {"language", chunk.chunk.metadata.language},
+        {"kind", chunk_kind_to_string(chunk.chunk.metadata.kind)},
+        {"mode", chunk_mode_to_string(chunk.chunk.metadata.mode)},
+        {"qualified_name", chunk.chunk.metadata.qualified_name},
+        {"part_index", chunk.chunk.metadata.part_index},
+        {"part_count", chunk.chunk.metadata.part_count},
+        {"complete_symbol", chunk.chunk.metadata.complete_symbol},
         {"embedding", chunk.embedding}
     };
 }
 
 EmbeddedChunk chunk_from_json(const nlohmann::json& json)
 {
-    return EmbeddedChunk{
-        CodeChunk{
+    CodeChunk chunk{
             json.at("id").get<std::size_t>(),
             SourceRange{
                 json.at("file").get<std::string>(),
@@ -37,9 +76,17 @@ EmbeddedChunk chunk_from_json(const nlohmann::json& json)
                 json.at("end_line").get<std::size_t>()
             },
             json.at("text").get<std::string>()
-        },
-        json.at("embedding").get<Embedding>()
     };
+
+    chunk.metadata.language = json.value("language", "unknown");
+    chunk.metadata.kind = chunk_kind_from_string(json.value("kind", "fallback"));
+    chunk.metadata.mode = chunk_mode_from_string(json.value("mode", "fallback"));
+    chunk.metadata.qualified_name = json.value("qualified_name", "");
+    chunk.metadata.part_index = json.value("part_index", std::size_t{0});
+    chunk.metadata.part_count = json.value("part_count", std::size_t{1});
+    chunk.metadata.complete_symbol = json.value("complete_symbol", true);
+
+    return EmbeddedChunk{std::move(chunk), json.at("embedding").get<Embedding>()};
 }
 
 IndexMetadata metadata_from_index_json(const nlohmann::json& json)
@@ -49,6 +96,8 @@ IndexMetadata metadata_from_index_json(const nlohmann::json& json)
     metadata.embedding_model = json.at("embedding_model").get<std::string>();
     metadata.file_count = json.value("file_count", std::size_t{0});
     metadata.chunk_count = json.value("chunk_count", std::size_t{0});
+    metadata.schema_version = json.value("schema_version", std::size_t{1});
+    metadata.chunker_version = json.value("chunker_version", "line-v1");
     return metadata;
 }
 
@@ -114,6 +163,8 @@ void VectorStore::save(const std::filesystem::path& index_path) const
     json["embedding_model"] = index_.metadata.embedding_model;
     json["file_count"] = index_.metadata.file_count;
     json["chunk_count"] = index_.chunks.size();
+    json["schema_version"] = index_.metadata.schema_version;
+    json["chunker_version"] = index_.metadata.chunker_version;
     json["chunks"] = nlohmann::json::array();
     for (const auto& chunk : index_.chunks) {
         json["chunks"].push_back(chunk_to_json(chunk));

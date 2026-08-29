@@ -82,7 +82,7 @@ src/
 
   core/
     app_config.hpp/.cpp         Конфіг API і побудова endpoint URL
-    chunker.hpp/.cpp            Розбиття файлів на overlapping line chunks
+    chunker.hpp/.cpp            Tree-sitter syntax-aware chunking і line fallback
     embeddings_client.hpp/.cpp  Клієнт OpenAI-compatible embeddings API
     file_scanner.hpp/.cpp       Рекурсивне сканування підтримуваних файлів
     http_client.hpp/.cpp        Спільний JSON POST wrapper на базі cpr
@@ -319,7 +319,21 @@ src/core/chunker.hpp
 src/core/chunker.cpp
 ```
 
-Зараз використовується простий line-based підхід:
+Для C/C++ використовується syntax-aware підхід на базі Tree-sitter, а для інших
+файлів і помилок парсингу зберігається line-based fallback:
+
+- Tree-sitter виділяє namespace, class/struct, declarations і function definitions;
+- звичайна функція або метод залишається одним chunk-ом;
+- великий syntax node ділиться на statement boundaries до hard limit 12 000 байт;
+- незалежні синтаксичні units не дублюються через line overlap;
+- короткі header/declaration fragments зливаються із сусіднім chunk-ом, якщо це можливо;
+- fallback використовує максимум 100 рядків і overlap 20 рядків.
+
+Tree-sitter будує error-tolerant syntax tree, але не semantic C++ AST: він не розв'язує
+типи, overload-и або compiler configuration. Це свідомий компроміс для довільних папок,
+де немає гарантованого `compile_commands.json`.
+
+Fallback-підхід:
 
 - максимум 100 рядків у chunk;
 - overlap 20 рядків між сусідніми chunks.
@@ -342,7 +356,13 @@ Overlap потрібен, щоб не втрачати контекст на м�
 - відносний шлях до файлу;
 - початковий рядок;
 - кінцевий рядок;
-- текст chunk-а.
+- текст chunk-а;
+- metadata про мову, kind, режим chunking і qualified symbol name.
+
+У JSON index додатково зберігаються `schema_version` і `chunker_version`. Після зміни
+меж chunks старий index потрібно перебудувати, оскільки його embeddings були створені
+для іншого текстового payload. Retrieval також бере розширений candidate pool і відкидає
+короткі несимвольні fragments, щоб вони не витісняли повноцінні функції з top-k.
 
 Порожні файли не створюють chunks.
 
