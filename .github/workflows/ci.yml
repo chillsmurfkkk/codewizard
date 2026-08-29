@@ -45,7 +45,7 @@ jobs:
         run: cmake --preset windows-msvc
 
       - name: Build tests
-        run: cmake --build --preset windows-msvc-debug --target codewizard_tests --parallel
+        run: cmake --build --preset windows-msvc-debug --target codewizard_tests codewizard_http_tests --parallel
 
       - name: Run tests
         run: ctest --test-dir build/windows-msvc -C Debug --output-on-failure
