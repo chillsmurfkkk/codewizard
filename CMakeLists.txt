@@ -16,10 +16,7 @@ find_package(OpenGL REQUIRED)
 find_package(unofficial-tree-sitter CONFIG REQUIRED)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static dependencies" FORCE)
-set(TREE_SITTER_CLI
-    "${VCPKG_INSTALLED_DIR}/${VCPKG_HOST_TRIPLET}/tools/tree-sitter-cli/tree-sitter.exe"
-    CACHE FILEPATH "Tree-sitter CLI used to generate grammars"
-)
+find_program(TREE_SITTER_CLI NAMES tree-sitter REQUIRED)
 FetchContent_Declare(
     tree_sitter_cpp
     URL https://github.com/tree-sitter/tree-sitter-cpp/archive/refs/tags/v0.23.4.tar.gz
