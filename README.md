@@ -1,5 +1,9 @@
 # codewizard
 
+<img width="400" height="270" alt="image" src="https://github.com/user-attachments/assets/6c3f6aff-6794-4565-b535-ea836396b5e9" /><img width="400" height="270" alt="image" src="https://github.com/user-attachments/assets/4df8c673-980d-41b2-8252-d78d4bc3b5f0" />
+
+
+
 `codewizard` is a local desktop RAG app for asking questions about source code.
 
 It scans a project folder, creates a local index, and uses an LLM to answer questions with source references.
